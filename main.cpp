@@ -370,7 +370,7 @@ int main() {
     std::vector<Polygon> s;
     s.push_back(p);
 
-    save_frame(s, "toto");
-    save_svg(s, "toto.svg");
+    save_frame(s, "lab1");
+    save_svg(s, "lab1.svg");
     return 0;
 }
