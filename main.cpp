@@ -177,6 +177,34 @@ void save_frame(const std::vector<Polygon>& cells, std::string filename, int fra
 }
 
 
+// saves a static svg file. The polygon vertices are supposed to be in the range [0..1], and a canvas of size 1000x1000 is created
+void save_svg(const std::vector<Polygon>& polygons, std::string filename, const std::vector<Vector>* points = NULL, std::string fillcol = "none") {
+    FILE* f = fopen(filename.c_str(), "w+");
+    fprintf(f, "<svg xmlns = \"http://www.w3.org/2000/svg\" width = \"1000\" height = \"1000\">\n");
+    for (int i = 0; i < polygons.size(); i++) {
+        fprintf(f, "<g>\n");
+        fprintf(f, "<polygon points = \"");
+        for (int j = 0; j < polygons[i].vertices.size(); j++) {
+            fprintf(f, "%3.3f, %3.3f ", (polygons[i].vertices[j][0] * 1000), (1000 - polygons[i].vertices[j][1] * 1000));
+        }
+        fprintf(f, "\"\nfill = \"%s\" stroke = \"black\"/>\n", fillcol.c_str());
+        fprintf(f, "</g>\n");
+    }
+
+    if (points) {
+        fprintf(f, "<g>\n");
+        for (int i = 0; i < points->size(); i++) {
+            fprintf(f, "<circle cx = \"%3.3f\" cy = \"%3.3f\" r = \"3\" />\n", (*points)[i][0] * 1000., 1000. - (*points)[i][1] * 1000);
+        }
+        fprintf(f, "</g>\n");
+
+    }
+
+    fprintf(f, "</svg>\n");
+    fclose(f);
+}
+
+
 class VoronoiDiagram {
 
 public:
@@ -193,6 +221,27 @@ public:
         //      For all other sites Pj (optionally, only k nearest neighbors) :
         //          Clip it with bisector of [Pi,Pj]
         //      (Lab 3, fluids) : also clip it by a disk of radius sqrt(w_i - w_air) centered at Pi
+
+        cells.clear();
+        cells.resize(points.size());
+
+        for(int i=0;i<points.size();i++){
+            Polygon cell;
+            cell.vertices.push_back(Vector(0, 0));
+            cell.vertices.push_back(Vector(1, 0));
+            cell.vertices.push_back(Vector(1, 1));
+            cell.vertices.push_back(Vector(0, 1));
+
+            for(int j=0;j<points.size();j++){
+                if(i == j){
+                    continue;
+                }
+                cell = clip_by_bisector(cell, points[i], points[j], 0, 0);
+            }
+
+            cells[i] = cell;
+        }
+        
     }
 
 
@@ -207,6 +256,12 @@ public:
         return result;
     }
 
+    static bool is_inside(const Vector &x, const Vector& P0, const Vector& Pi, double w0, double wi){
+        double d0 = (x - P0).norm2() - w0;
+        double di = (x - Pi).norm2() - wi;
+        return d0 <= di;
+    }
+
     static Polygon clip_by_bisector(const Polygon& V, const Vector& P0, const Vector& Pi, double w0, double wi) {
 
         // TODO Lab 1 (Voronoi) : in Lab 1, we assume w0 = w1 = 0
@@ -215,6 +270,39 @@ public:
         // TODO Lab 2 (Semi-Discrete Optimal Transport) : extend to Laguerre cells, i.e., w0 != w1
 
         Polygon result;
+
+        if(V.vertices.empty()){return result;}
+
+        Vector mid = (P0 + Pi) / 2;
+        Vector n = Pi - P0;
+        int n_v = V.vertices.size();
+        for(int i=0;i<n_v;i++){
+            Vector cur = V.vertices[i];
+            Vector nxt = V.vertices[(i+1) % n_v];
+            bool in1 = is_inside(cur, P0, Pi, w0, wi);
+            bool in2 = is_inside(nxt, P0, Pi, w0, wi);
+
+            if(in1 && in2){
+                result.vertices.push_back(nxt);
+            }
+            else if(!in1 && !in2){
+                continue;
+            }
+            else{
+                // add intersection point
+                Vector AB = nxt - cur;
+                double a = (cur - P0).norm2() - w0 - ((cur - Pi).norm2() - wi);
+                double b = (nxt - P0).norm2() - w0 - ((nxt - Pi).norm2() - wi);
+                double t = a / (a - b);
+                Vector inter = cur + t * AB;
+
+                result.vertices.push_back(inter);
+
+                if(!in1 && in2){
+                    result.vertices.push_back(nxt);
+                }
+            }
+        }
 
         return result;
     }
@@ -336,41 +424,48 @@ public:
     double fluid_volume; // you decide the fraction of the unit square occupied by the fluid
 };
 
-// saves a static svg file. The polygon vertices are supposed to be in the range [0..1], and a canvas of size 1000x1000 is created
-void save_svg(const std::vector<Polygon>& polygons, std::string filename, std::string fillcol = "none") {
-    FILE* f = fopen(filename.c_str(), "w+");
-    fprintf(f, "<svg xmlns = \"http://www.w3.org/2000/svg\" width = \"1000\" height = \"1000\">\n");
-    for (int i = 0; i < polygons.size(); i++) {
-        fprintf(f, "<g>\n");
-        fprintf(f, "<polygon points = \"");
-        for (int j = 0; j < polygons[i].vertices.size(); j++) {
-            fprintf(f, "%3.3f, %3.3f ", (polygons[i].vertices[j][0] * 1000), (1000 - polygons[i].vertices[j][1] * 1000));
-        }
-        fprintf(f, "\"\nfill = \"%s\" stroke = \"black\"/>\n", fillcol.c_str());
-        fprintf(f, "</g>\n");
-    }
-    fprintf(f, "</svg>\n");
-    fclose(f);
-}
-
-
-
-
-
-
 
 int main() {
 
-    Polygon p;
-    p.vertices.push_back(Vector(0.1, 0.2));
-    p.vertices.push_back(Vector(0.6, 0.4));
-    p.vertices.push_back(Vector(0.5, 0.7));
-    p.vertices.push_back(Vector(0.2, 0.5));
+    // polygon
+    // Polygon p;
+    // p.vertices.push_back(Vector(0.1, 0.2));
+    // p.vertices.push_back(Vector(0.6, 0.4));
+    // p.vertices.push_back(Vector(0.5, 0.7));
+    // p.vertices.push_back(Vector(0.2, 0.5));
 
-    std::vector<Polygon> s;
-    s.push_back(p);
+    // std::vector<Polygon> s;
+    // s.push_back(p);
 
-    save_frame(s, "lab1");
-    save_svg(s, "lab1.svg");
+    // save_frame(s, "lab1");
+    // save_svg(s, "lab1.svg");
+    // return 0;
+
+    // voronoi diagram
+    VoronoiDiagram vor;
+
+    int N = 100;
+    srand((unsigned int)time(0));
+    for (int i = 0; i < N; i++) {
+        double x = (double)rand() / RAND_MAX;
+        double y = (double)rand() / RAND_MAX;
+        vor.points.push_back(Vector(x, y));
+    }
+
+    vor.compute();
+
+    save_svg(vor.cells, "lab1_voronoi.svg");
+    save_frame(vor.cells, "lab1_voronoi");
+
     return 0;
 }
+
+/*
+g++ -O3 -fopenmp main.cpp lbfgs.c -o main
+g++ -O3 main.cpp -o main
+
+lab1_voronoi_10.png: N = 10
+lab1_voronoi_50.png: N = 50
+lab1_voronoi_100.png: N = 100
+
+*/
