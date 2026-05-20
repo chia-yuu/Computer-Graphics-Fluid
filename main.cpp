@@ -61,7 +61,15 @@ public:
         if (vertices.size() < 3) return 0;
         // TODO Lab 3
         // Compute the area of the polygon
-        return -111;
+        // return -111;
+        double a = 0;
+        int n = vertices.size();
+        for (int i = 0; i < n; i++) {
+            int j = (i + 1) % n;
+            a += vertices[i][0] * vertices[j][1];
+            a -= vertices[j][0] * vertices[i][1];
+        }
+        return std::abs(a) / 2.0;
     }
 
     Vector centroid() {
@@ -69,7 +77,23 @@ public:
         // TODO Lab 3
         // Compute the centroid of the polygon
 
-        return Vector(-111,-111);
+        // return Vector(-111,-111);
+
+        double cx = 0, cy = 0, a = 0;
+        int n = vertices.size();
+        for (int i = 0; i < n; ++i) {
+            const Vector& p = vertices[i];
+            const Vector& q = vertices[(i + 1) % n];
+            double cross = p[0] * q[1] - q[0] * p[1];
+            cx += (p[0] + q[0]) * cross;
+            cy += (p[1] + q[1]) * cross;
+            a += cross;
+        }
+        a *= 0.5;
+        if (fabs(a) < 1e-12) return Vector(0, 0);
+        cx /= (6 * a);
+        cy /= (6 * a);
+        return Vector(cx, cy);
     }
 
     double integral_square_distance(const Vector& Pi) {
@@ -78,7 +102,21 @@ public:
         // TODO Lab 3
         // Compute the integral of ||x-Pi||^2 over the polygon
 
-        return -111;
+        // return -111;
+        double result = 0;
+        int n = vertices.size();
+        Vector p0 = vertices[0];
+        for (int i = 1; i < n - 1; i++) {
+            Vector p1 = vertices[i];
+            Vector p2 = vertices[i + 1];
+            double tri_area = ((p1[0]-p0[0])*(p2[1]-p0[1])
+                            - (p2[0]-p0[0])*(p1[1]-p0[1])) / 2.0;
+            Vector c0 = p0 - Pi, c1 = p1 - Pi, c2 = p2 - Pi;
+            double sum = dot(c0,c0) + dot(c1,c1) + dot(c2,c2)
+                    + dot(c0,c1) + dot(c1,c2) + dot(c0,c2);
+            result += tri_area * sum / 6.0;
+        }
+        return result;
     }
 
     std::vector<Vector> vertices;
@@ -224,6 +262,7 @@ public:
 
         cells.clear();
         cells.resize(points.size());
+        if (weights.empty()) weights.assign(points.size(), 0.0);
 
         for(int i=0;i<points.size();i++){
             Polygon cell;
@@ -236,7 +275,7 @@ public:
                 if(i == j){
                     continue;
                 }
-                cell = clip_by_bisector(cell, points[i], points[j], 0, 0);
+                cell = clip_by_bisector(cell, points[i], points[j], weights[i], weights[j]);
             }
 
             cells[i] = cell;
@@ -347,10 +386,19 @@ static lbfgsfloatval_t evaluate(
    
     // Lab 2 (Optimal transport) : compute the function to be minimized (fx) and its gradient (g[i], i=0..n-1)
     // Lab 3 (fluid) : adapt these functions to support partial optimal transport (now "n" has been increased by 1 to account for the air variable)
-    
+
+    double lambda = 1.0 / n;
     lbfgsfloatval_t fx = 0.0;
     // g[i] = ...
     // fx = ...
+
+    for (int i = 0; i < n; i++) {
+        double area_i   = ot->vor.cells[i].area();
+        double int_sq_i = ot->vor.cells[i].integral_square_distance(ot->vor.points[i]);
+
+        fx += -int_sq_i + x[i] * area_i - lambda * x[i];
+        g[i] = area_i - lambda;
+    }
 
     return fx;
 }
@@ -370,16 +418,21 @@ static int progress(
 
 // Lab 2
 void OptimalTransport::optimize() {
+    int N = (int)vor.points.size();
+    vor.weights.assign(N, 0.0);
 
     lbfgsfloatval_t fx;
-    std::vector<double> weights(vor.weights);
+    std::vector<lbfgsfloatval_t> weights(N, 0.0);
 
     lbfgs_parameter_t param;
     // Initialize the parameters for the L-BFGS optimization.
     lbfgs_parameter_init(&param);
+    
+    param.max_iterations = 1000;
+    param.epsilon = 1e-5;
 
     // run the LBFGS optimizer
-    int ret = lbfgs(weights.size(), &weights[0], &fx, evaluate, progress, (void*)this, &param);
+    int ret = lbfgs(N, weights.data(), &fx, evaluate, progress, (void*)this, &param);
 
     // copy the result back to the voronoi structure
     vor.weights = weights;
@@ -444,18 +497,25 @@ int main() {
     // voronoi diagram
     VoronoiDiagram vor;
 
+    // lab 2, ot
+    OptimalTransport ot;
+
     int N = 100;
     srand((unsigned int)time(0));
     for (int i = 0; i < N; i++) {
         double x = (double)rand() / RAND_MAX;
         double y = (double)rand() / RAND_MAX;
         vor.points.push_back(Vector(x, y));
+        ot.vor.points.push_back(Vector(x, y));
     }
 
-    vor.compute();
+    // vor.compute();
+    // save_svg(vor.cells, "lab2_voronoi.svg");
+    // save_frame(vor.cells, "lab2_voronoi");
 
-    save_svg(vor.cells, "lab1_voronoi.svg");
-    save_frame(vor.cells, "lab1_voronoi");
+    ot.optimize();
+    save_svg(ot.vor.cells, "lab2.svg", &ot.vor.points);
+    save_frame(ot.vor.cells, "lab2");
 
     return 0;
 }
@@ -468,5 +528,8 @@ lab1_voronoi_10.png: N = 10
 lab1_voronoi_50.png: N = 50
 lab1_voronoi_100.png: N = 100
 
-
+lab 2
+N = 10: fx = -0.049448, xnorm = 0.210063, gnorm = 0.000007, step = 1.000000
+N = 50: fx = -0.011958, xnorm = 0.228063, gnorm = 0.000005, step = 1.000000
+N = 100: fx = -0.010935, xnorm = 0.459368, gnorm = 0.000009, step = 1.000000
 */
