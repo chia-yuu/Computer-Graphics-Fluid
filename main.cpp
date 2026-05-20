@@ -468,4 +468,5 @@ lab1_voronoi_10.png: N = 10
 lab1_voronoi_50.png: N = 50
 lab1_voronoi_100.png: N = 100
 
+
 */
