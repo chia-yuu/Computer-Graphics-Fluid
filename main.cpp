@@ -10,6 +10,10 @@
 
 #include "lbfgs.h"
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323856
+#endif
+
 double sqr(double x) { return x * x; };
 
 class Vector {
@@ -57,14 +61,15 @@ double dot(const Vector& a, const Vector& b) {
 class Polygon {
 public:
 
-    double area() {
+    double area() const{
         if (vertices.size() < 3) return 0;
         // TODO Lab 3
         // Compute the area of the polygon
         // return -111;
+
         double a = 0;
         int n = vertices.size();
-        for (int i = 0; i < n; i++) {
+        for(int i = 0;i < n;i++){
             int j = (i + 1) % n;
             a += vertices[i][0] * vertices[j][1];
             a -= vertices[j][0] * vertices[i][1];
@@ -81,7 +86,7 @@ public:
 
         double cx = 0, cy = 0, a = 0;
         int n = vertices.size();
-        for (int i = 0; i < n; ++i) {
+        for(int i = 0; i < n; ++i){
             const Vector& p = vertices[i];
             const Vector& q = vertices[(i + 1) % n];
             double cross = p[0] * q[1] - q[0] * p[1];
@@ -90,7 +95,7 @@ public:
             a += cross;
         }
         a *= 0.5;
-        if (fabs(a) < 1e-12) return Vector(0, 0);
+        if(fabs(a) < 1e-12) return Vector(0, 0);
         cx /= (6 * a);
         cy /= (6 * a);
         return Vector(cx, cy);
@@ -103,17 +108,16 @@ public:
         // Compute the integral of ||x-Pi||^2 over the polygon
 
         // return -111;
+
         double result = 0;
         int n = vertices.size();
         Vector p0 = vertices[0];
-        for (int i = 1; i < n - 1; i++) {
+        for(int i = 1;i < n - 1;i++){
             Vector p1 = vertices[i];
             Vector p2 = vertices[i + 1];
-            double tri_area = ((p1[0]-p0[0])*(p2[1]-p0[1])
-                            - (p2[0]-p0[0])*(p1[1]-p0[1])) / 2.0;
+            double tri_area = ((p1[0]-p0[0])*(p2[1]-p0[1]) - (p2[0]-p0[0])*(p1[1]-p0[1])) / 2.0;
             Vector c0 = p0 - Pi, c1 = p1 - Pi, c2 = p2 - Pi;
-            double sum = dot(c0,c0) + dot(c1,c1) + dot(c2,c2)
-                    + dot(c0,c1) + dot(c1,c2) + dot(c0,c2);
+            double sum = dot(c0,c0) + dot(c1,c1) + dot(c2,c2) + dot(c0,c1) + dot(c1,c2) + dot(c0,c2);
             result += tri_area * sum / 6.0;
         }
         return result;
@@ -123,89 +127,31 @@ public:
 };
 
 
-void save_frame(const std::vector<Polygon>& cells, std::string filename, int frameid = 0) {
+void save_frame(const std::vector<Polygon>& cells, double fluid_volumn, const std::vector<Vector>& points, std::string filename, int frameid = 0) {
     constexpr int W = 800, H = 800;
-    constexpr double edge_width = 2.0;
-    constexpr double edge_width2 = edge_width * edge_width;
-
-    std::vector<unsigned char> inside(W * H, 0), edge(W * H, 0);
-
-#pragma omp parallel for schedule(dynamic)
-    for (int i = 0; i < (int)cells.size(); ++i) {
-        const auto& V = cells[i].vertices;
-        const int n = (int)V.size();
-        if (n < 3) continue;
-
-        std::vector<double> xs(n), ys(n);
-        double xmin = 1e30, ymin = 1e30, xmax = -1e30, ymax = -1e30;
-        for (int j = 0; j < n; ++j) {
-            xs[j] = V[j][0] * W;
-            ys[j] = V[j][1] * H;
-            xmin = std::min(xmin, xs[j]);
-            ymin = std::min(ymin, ys[j]);
-            xmax = std::max(xmax, xs[j]);
-            ymax = std::max(ymax, ys[j]);
-        }
-
-        int x0 = std::max(0, (int)std::floor(xmin - edge_width));
-        int y0 = std::max(0, (int)std::floor(ymin - edge_width));
-        int x1 = std::min(W - 1, (int)std::ceil(xmax + edge_width));
-        int y1 = std::min(H - 1, (int)std::ceil(ymax + edge_width));
-        for (int y = y0; y <= y1; ++y) {
-            for (int x = x0; x <= x1; ++x) {
-                const double px = x + 0.5, py = y + 0.5;
-
-                int prev_sign = 0;
-                bool isInside = true;
-                bool isEdge = false;
-
-                for (int j = 0; j < n; ++j) {
-                    int k = (j + 1) % n;
-
-                    double ax = xs[j], ay = ys[j];
-                    double bx = xs[k], by = ys[k];
-                    double dx = bx - ax, dy = by - ay;
-                    double qx = px - ax, qy = py - ay;
-
-                    double det = qx * dy - qy * dx;
-                    int s = (det > 1e-12) - (det < -1e-12);
-
-                    if (s != 0) {
-                        if (prev_sign != 0 && s != prev_sign) {
-                            isInside = false;
-                            break;
-                        }
-                        prev_sign = s;
-                    }
-
-                    double len2 = dx * dx + dy * dy;
-                    double dot = qx * dx + qy * dy;
-                    if (dot >= 0.0 && dot <= len2 && det * det <= edge_width2 * len2)
-                        isEdge = true;
-                }
-
-                if (isInside) {
-                    int id = (H - 1 - y) * W + x;
-                    inside[id] = 1;
-                    if (isEdge) edge[id] = 1;
-                }
-            }
-        }
-    }
-
     std::vector<unsigned char> image(W * H * 3, 255);
 
-#pragma omp parallel for
-    for (int i = 0; i < W * H; ++i) {
-        if (edge[i]) {
-            image[3 * i + 0] = 0;
-            image[3 * i + 1] = 0;
-            image[3 * i + 2] = 0;
-        }
-        else if (inside[i]) {
-            image[3 * i + 0] = 0;
-            image[3 * i + 1] = 0;
-            image[3 * i + 2] = 255;
+    double target_area = fluid_volumn / points.size();
+    double r = std::sqrt(target_area / M_PI) * W;
+
+    for(int i = 0; i < (int)points.size(); i++){
+        int cx = (int)(points[i][0] * W);
+        int cy = (int)((1.0 - points[i][1]) * H);
+
+        int r_int = (int)std::ceil(r);
+        for(int dy = -r_int; dy <= r_int; dy++){
+            for(int dx = -r_int; dx <= r_int; dx++){
+                if (dx*dx + dy*dy <= r*r) {
+                    int px = cx + dx;
+                    int py = cy + dy;
+                    if (px >= 0 && px < W && py >= 0 && py < H) {
+                        int id = py * W + px;
+                        image[3*id+0] = 0;
+                        image[3*id+1] = 0;
+                        image[3*id+2] = 200;
+                    }
+                }
+            }
         }
     }
 
@@ -213,6 +159,98 @@ void save_frame(const std::vector<Polygon>& cells, std::string filename, int fra
     os << filename << frameid << ".png";
     stbi_write_png(os.str().c_str(), W, H, 3, image.data(), W * 3);
 }
+
+
+// void save_frame(const std::vector<Polygon>& cells, std::string filename, int frameid = 0) {
+//     constexpr int W = 800, H = 800;
+//     constexpr double edge_width = 2.0;
+//     constexpr double edge_width2 = edge_width * edge_width;
+
+//     std::vector<unsigned char> inside(W * H, 0), edge(W * H, 0);
+
+// #pragma omp parallel for schedule(dynamic)
+//     for (int i = 0; i < (int)cells.size(); ++i) {
+//         const auto& V = cells[i].vertices;
+//         const int n = (int)V.size();
+//         if (n < 3) continue;
+
+//         std::vector<double> xs(n), ys(n);
+//         double xmin = 1e30, ymin = 1e30, xmax = -1e30, ymax = -1e30;
+//         for (int j = 0; j < n; ++j) {
+//             xs[j] = V[j][0] * W;
+//             ys[j] = V[j][1] * H;
+//             xmin = std::min(xmin, xs[j]);
+//             ymin = std::min(ymin, ys[j]);
+//             xmax = std::max(xmax, xs[j]);
+//             ymax = std::max(ymax, ys[j]);
+//         }
+
+//         int x0 = std::max(0, (int)std::floor(xmin - edge_width));
+//         int y0 = std::max(0, (int)std::floor(ymin - edge_width));
+//         int x1 = std::min(W - 1, (int)std::ceil(xmax + edge_width));
+//         int y1 = std::min(H - 1, (int)std::ceil(ymax + edge_width));
+//         for (int y = y0; y <= y1; ++y) {
+//             for (int x = x0; x <= x1; ++x) {
+//                 const double px = x + 0.5, py = y + 0.5;
+
+//                 int prev_sign = 0;
+//                 bool isInside = true;
+//                 bool isEdge = false;
+
+//                 for (int j = 0; j < n; ++j) {
+//                     int k = (j + 1) % n;
+
+//                     double ax = xs[j], ay = ys[j];
+//                     double bx = xs[k], by = ys[k];
+//                     double dx = bx - ax, dy = by - ay;
+//                     double qx = px - ax, qy = py - ay;
+
+//                     double det = qx * dy - qy * dx;
+//                     int s = (det > 1e-12) - (det < -1e-12);
+
+//                     if (s != 0) {
+//                         if (prev_sign != 0 && s != prev_sign) {
+//                             isInside = false;
+//                             break;
+//                         }
+//                         prev_sign = s;
+//                     }
+
+//                     double len2 = dx * dx + dy * dy;
+//                     double dot = qx * dx + qy * dy;
+//                     if (dot >= 0.0 && dot <= len2 && det * det <= edge_width2 * len2)
+//                         isEdge = true;
+//                 }
+
+//                 if (isInside) {
+//                     int id = (H - 1 - y) * W + x;
+//                     inside[id] = 1;
+//                     if (isEdge) edge[id] = 1;
+//                 }
+//             }
+//         }
+//     }
+
+//     std::vector<unsigned char> image(W * H * 3, 255);
+
+// #pragma omp parallel for
+//     for (int i = 0; i < W * H; ++i) {
+//         if (edge[i]) {
+//             image[3 * i + 0] = 0;
+//             image[3 * i + 1] = 0;
+//             image[3 * i + 2] = 0;
+//         }
+//         else if (inside[i]) {
+//             image[3 * i + 0] = 0;
+//             image[3 * i + 1] = 0;
+//             image[3 * i + 2] = 255;
+//         }
+//     }
+
+//     std::ostringstream os;
+//     os << filename << frameid << ".png";
+//     stbi_write_png(os.str().c_str(), W, H, 3, image.data(), W * 3);
+// }
 
 
 // saves a static svg file. The polygon vertices are supposed to be in the range [0..1], and a canvas of size 1000x1000 is created
@@ -264,6 +302,9 @@ public:
         cells.resize(points.size());
         if (weights.empty()) weights.assign(points.size(), 0.0);
 
+        double w_air = (weights.size() > points.size()) ? weights[points.size()] : -1e18;
+        const int DISK_SIDES = 64;
+
         for(int i=0;i<points.size();i++){
             Polygon cell;
             cell.vertices.push_back(Vector(0, 0));
@@ -276,6 +317,17 @@ public:
                     continue;
                 }
                 cell = clip_by_bisector(cell, points[i], points[j], weights[i], weights[j]);
+            }
+
+            if(weights.size() > points.size() && weights[i] > w_air){
+                double r = std::sqrt(weights[i] - w_air);
+                for(int k = 0; k < DISK_SIDES; k++){
+                    double angle1 = 2.0 * M_PI * k / DISK_SIDES;
+                    double angle2 = 2.0 * M_PI * (k + 1) / DISK_SIDES;
+                    Vector u = points[i] + Vector(std::cos(angle1), std::sin(angle1)) * r;
+                    Vector v = points[i] + Vector(std::cos(angle2), std::sin(angle2)) * r;
+                    cell = clip_by_edge(cell, u, v);
+                }
             }
 
             cells[i] = cell;
@@ -292,6 +344,43 @@ public:
 
         Polygon result;
 
+        int n = V.vertices.size();
+        if(n == 0){
+            return result;
+        }
+
+        for(int i = 0;i < n;i++){
+            Vector cur = V.vertices[i];
+            Vector nxt = V.vertices[(i + 1) % n];
+
+            auto inside = [&](const Vector& p){
+                return (v[0]-u[0])*(p[1]-u[1]) - (v[1]-u[1])*(p[0]-u[0]) >= 0;
+            };
+
+            bool in1 = inside(cur);
+            bool in2 = inside(nxt);
+
+            if(in1 && in2){
+                result.vertices.push_back(nxt);
+            }
+            else if(in1 && !in2){
+                Vector d = nxt - cur;
+                double denom = (v[0]-u[0])*d[1] - (v[1]-u[1])*d[0];
+                if(std::abs(denom) > 1e-12){
+                    double t = ((u[0]-cur[0])*(v[1]-u[1]) - (u[1]-cur[1])*(v[0]-u[0])) / denom;
+                    result.vertices.push_back(cur + d * t);
+                }
+            }
+            else if(!in1 && in2){
+                Vector d = nxt - cur;
+                double denom = (v[0]-u[0])*d[1] - (v[1]-u[1])*d[0];
+                if(std::abs(denom) > 1e-12){
+                    double t = ((u[0]-cur[0])*(v[1]-u[1]) - (u[1]-cur[1])*(v[0]-u[0])) / denom;
+                    result.vertices.push_back(cur + d * t);
+                }
+                result.vertices.push_back(nxt);
+            }
+        }
         return result;
     }
 
@@ -360,11 +449,13 @@ public:
 class OptimalTransport {
 
 public:
-    OptimalTransport() {};
+    OptimalTransport() : fluid_fraction(1.0) {};
 
     void optimize();
 
     VoronoiDiagram vor;
+
+    double fluid_fraction;
 };
 
 
@@ -379,6 +470,9 @@ static lbfgsfloatval_t evaluate(
 {
     OptimalTransport* ot = (OptimalTransport*)(instance);
 
+    int N_fluid = (int)ot->vor.points.size();
+    bool has_air = (n == N_fluid + 1);
+
     // first compute the Voronoi diagram at the current optimization step
     memcpy(&ot->vor.weights[0], x, n * sizeof(x[0]));
     ot->vor.compute();
@@ -389,15 +483,29 @@ static lbfgsfloatval_t evaluate(
 
     double lambda = 1.0 / n;
     lbfgsfloatval_t fx = 0.0;
+    double f = ot->fluid_fraction;
+    double lambda_fluid = f / N_fluid;
+    double lambda_air   = 1.0 - f;
     // g[i] = ...
     // fx = ...
 
-    for (int i = 0; i < n; i++) {
-        double area_i   = ot->vor.cells[i].area();
+    for(int i = 0; i < N_fluid; i++){
+        double area_i = ot->vor.cells[i].area();
         double int_sq_i = ot->vor.cells[i].integral_square_distance(ot->vor.points[i]);
 
-        fx += -int_sq_i + x[i] * area_i - lambda * x[i];
-        g[i] = area_i - lambda;
+        fx += -int_sq_i + x[i] * area_i - lambda_fluid * x[i];
+        g[i] = area_i - lambda_fluid;
+    }
+
+    if(has_air){
+        double total_fluid_area = 0;
+        for(int i=0;i<N_fluid;i++){
+            total_fluid_area += ot->vor.cells[i].area();
+        }
+        double area_air = 1.0 - total_fluid_area;
+
+        fx += x[N_fluid] * area_air - lambda_air * x[N_fluid];
+        g[N_fluid] = area_air - lambda_air;
     }
 
     return fx;
@@ -408,18 +516,22 @@ static int progress(
     void* instance, const lbfgsfloatval_t* x, const lbfgsfloatval_t* g, const lbfgsfloatval_t fx,
     const lbfgsfloatval_t xnorm, const lbfgsfloatval_t gnorm, const lbfgsfloatval_t step,
     int n, int k, int ls) {
-    printf("Iteration %d:\n", k);
-    printf("  fx = %f\n", fx);
-    printf("  xnorm = %f, gnorm = %f, step = %f\n", xnorm, gnorm, step);
-    printf("\n");
+    // printf("Iteration %d:\n", k);
+    // printf("  fx = %f\n", fx);
+    // printf("  xnorm = %f, gnorm = %f, step = %f\n", xnorm, gnorm, step);
+    // printf("\n");
     return 0;
 }
 
 
 // Lab 2
 void OptimalTransport::optimize() {
-    int N = (int)vor.points.size();
-    vor.weights.assign(N, 0.0);
+    int N_fluid = (int)vor.points.size();
+    bool partial = (fluid_fraction < 1.0);
+    int N = partial ? N_fluid + 1 : N_fluid;
+    if ((int)vor.weights.size() != N){
+        vor.weights.assign(N, 0.0);
+    }
 
     lbfgsfloatval_t fx;
     std::vector<lbfgsfloatval_t> weights(N, 0.0);
@@ -446,6 +558,29 @@ void OptimalTransport::optimize() {
 class Fluid {
 public:
     Fluid(int N_particles = 1000) : N_particles(N_particles) {
+        fluid_volume = 0.4;
+        ot.fluid_fraction = fluid_volume;
+
+        particles.resize(N_particles);
+        velocities.resize(N_particles, Vector(0, 0));
+
+        srand(42);
+        int placed = 0;
+        double cx = 0.5, cy = 0.5, radius = 0.28;
+        while(placed < N_particles){
+            double x = (double)rand() / RAND_MAX;
+            double y = (double)rand() / RAND_MAX;
+            double dx = x - cx, dy = y - cy;
+            // if(y < 0.6){
+            //     particles[placed] = Vector(x, y);
+            //     placed++;
+            // }
+            if (dx*dx + dy*dy < radius*radius) {
+                particles[placed++] = Vector(x, y);
+            }
+        }
+
+        ot.vor.points = particles;
     }
 
     // Lab 3 : advance the simulation dt in time
@@ -458,6 +593,30 @@ public:
         // TODO Lab 3 : 
         // Compute semi-discrete partial optimal transport
         // for all particles, add gravity and spring force towards cell centroid, integrate acceleration->velocity and velocity->position
+        ot.vor.points = particles;
+        ot.optimize();
+
+        for(int i = 0;i < N_particles;i++){
+            if(ot.vor.cells[i].vertices.size() < 3) continue;
+
+            Vector centroid_i = ot.vor.cells[i].centroid();
+            Vector spring_force = (centroid_i - particles[i]) / epsilon2;
+            Vector accel = g + spring_force * (1.0 / m_i);
+
+            velocities[i] = (velocities[i] + accel * dt) * 0.99;
+            particles[i]  = particles[i]  + velocities[i] * dt;
+
+            for(int d = 0;d < 2;d++){
+                if(particles[i][d] < 0.001){
+                    particles[i][d] = 0.001;
+                    if (velocities[i][d] < 0) velocities[i][d] *= -0.3;
+                }
+                if(particles[i][d] > 0.999){
+                    particles[i][d] = 0.999;
+                    if (velocities[i][d] > 0) velocities[i][d] *= -0.3;
+                }
+            }
+        }
     }
 
     // just run the full simulation
@@ -465,7 +624,10 @@ public:
         double dt = 0.002;
         for (int i = 0; i < 1000; i++) {
             time_step(dt);
-            save_frame(ot.vor.cells, "test", i);
+            save_frame(ot.vor.cells, fluid_volume, particles, "fluid_", i);
+            if(i % 100 == 0){
+                printf("Frame %d / %d\n", i, 1000);
+            }
         }
     }
 
@@ -494,28 +656,31 @@ int main() {
     // save_svg(s, "lab1.svg");
     // return 0;
 
-    // voronoi diagram
-    VoronoiDiagram vor;
+    // voronoi diagram (lab 1)
+    // VoronoiDiagram vor;
 
     // lab 2, ot
-    OptimalTransport ot;
+    // OptimalTransport ot;
 
-    int N = 100;
-    srand((unsigned int)time(0));
-    for (int i = 0; i < N; i++) {
-        double x = (double)rand() / RAND_MAX;
-        double y = (double)rand() / RAND_MAX;
-        vor.points.push_back(Vector(x, y));
-        ot.vor.points.push_back(Vector(x, y));
-    }
+    // int N = 100;
+    // srand((unsigned int)time(0));
+    // for (int i = 0; i < N; i++) {
+    //     double x = (double)rand() / RAND_MAX;
+    //     double y = (double)rand() / RAND_MAX;
+    //     vor.points.push_back(Vector(x, y));
+    //     ot.vor.points.push_back(Vector(x, y));
+    // }
 
     // vor.compute();
     // save_svg(vor.cells, "lab2_voronoi.svg");
     // save_frame(vor.cells, "lab2_voronoi");
 
-    ot.optimize();
-    save_svg(ot.vor.cells, "lab2.svg", &ot.vor.points);
-    save_frame(ot.vor.cells, "lab2");
+    // ot.optimize();
+    // save_svg(ot.vor.cells, "lab2.svg", &ot.vor.points);
+    // save_frame(ot.vor.cells, "lab2");
+
+    Fluid fluid(300);
+    fluid.run_simulation();
 
     return 0;
 }
@@ -523,6 +688,9 @@ int main() {
 /*
 g++ -O3 -fopenmp main.cpp lbfgs.c -o main
 g++ -O3 main.cpp -o main
+
+ffmpeg -framerate 20 -i fluid_%d.png -vf "scale=400:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse" fluid.gif
+ffmpeg -framerate 30 -i fluid_%d.png -c:v libx264 -pix_fmt yuv420p fluid.mp4
 
 lab1_voronoi_10.png: N = 10
 lab1_voronoi_50.png: N = 50
@@ -534,4 +702,27 @@ N = 50: fx = -0.011958, xnorm = 0.228063, gnorm = 0.000005, step = 1.000000
 N = 100: fx = -0.010935, xnorm = 0.459368, gnorm = 0.000009, step = 1.000000
 
 lab 3
+eps 變大、dt 變小
+
+ln 509
+fluid3 AC, WA, AC, WA
+param.max_iterations = 1000;    (200)
+param.epsilon = 1e-5;   (1e-4)
+dt = 0.002;
+epsilon2 = 0.004;
+
+XX WA
+epsilon2 = 0.01;
+
+XX AC? 全部不會掉下來(所以AC)
+epsilon2 = 0.001;
+
+XX AC AC WA? 速度變慢了
+epsilon2 = 0.004;
+dt = 0.001;
+
+fluid4 base
+
+fluid5
+save_frame
 */
